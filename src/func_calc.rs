@@ -10,17 +10,8 @@ enum Expr {
     Multiply(Box<Expr>, Box<Expr>),
     Divide(Box<Expr>, Box<Expr>),
     Pow(Box<Expr>, Box<Expr>),
-    Sqrt(Box<Expr>),
-    Sin(Box<Expr>),
-    Cos(Box<Expr>),
-    Tan(Box<Expr>),
-    Asin(Box<Expr>),
-    Acos(Box<Expr>),
-    Atan(Box<Expr>),
-    ToRadian(Box<Expr>),
-    ToDegree(Box<Expr>),
-    Pi,
-    E,
+    Func(Box<MathFunction>),
+    Consts(Box<MathConst>),
 }
 
 impl Expr {
@@ -33,21 +24,57 @@ impl Expr {
             Expr::Multiply(left, right) => left.eval() * right.eval(),
             Expr::Divide(left, right) => left.eval() / right.eval(),
             Expr::Pow(left, right) => left.eval().powf(right.eval()),
-            Expr::Sqrt(data) => data.eval().sqrt(),
-            Expr::Sin(data) => data.eval().sin(),
-            Expr::Cos(data) => data.eval().cos(),
-            Expr::Tan(data) => data.eval().tan(),
-            Expr::Asin(data) => data.eval().asin(),
-            Expr::Acos(data) => data.eval().acos(),
-            Expr::Atan(data) => data.eval().atan(),
-            Expr::ToRadian(data) => data.eval() / 180.0 * Expr::Pi.eval(),
-            Expr::ToDegree(data) => data.eval() / Expr::Pi.eval() * 180.0,
-            Expr::Pi => f64::consts::PI,
-            Expr::E => f64::consts::E,
+            Expr::Func(data) => data.eval(),
+            Expr::Consts(data) => data.eval(),
         }
     }
 }
 
+#[derive(Debug)]
+enum MathFunction {
+    Sqrt(Box<Expr>),
+    Sin(Box<Expr>),
+    Cos(Box<Expr>),
+    Tan(Box<Expr>),
+    Asin(Box<Expr>),
+    Acos(Box<Expr>),
+    Atan(Box<Expr>),
+    Log(Box<Expr>),
+    Ln(Box<Expr>),
+    ToRadian(Box<Expr>),
+    ToDegree(Box<Expr>),
+}
+impl MathFunction {
+    fn eval(&self) -> f64 {
+        match self {
+            Self::Sqrt(data) => data.eval().sqrt(),
+            Self::Sin(data) => data.eval().sin(),
+            Self::Cos(data) => data.eval().cos(),
+            Self::Tan(data) => data.eval().tan(),
+            Self::Asin(data) => data.eval().asin(),
+            Self::Acos(data) => data.eval().acos(),
+            Self::Atan(data) => data.eval().atan(),
+            Self::Log(data) => data.eval().log10(),
+            Self::Ln(data) => data.eval().ln(),
+            Self::ToRadian(data) => data.eval() / 180.0 * MathConst::Pi.eval(),
+            Self::ToDegree(data) => data.eval() / MathConst::Pi.eval() * 180.0,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum MathConst {
+    Pi,
+    E,
+}
+impl MathConst {
+    fn eval(&self) -> f64 {
+        match self {
+            Self::Pi => f64::consts::PI,
+            Self::E => f64::consts::E,
+        }
+    }
+}
 pub fn calc(expression: &str) -> Result<f64, String> {
     // 余分な空白を削除
     let bindstring = expression.replace(" ", "");
@@ -107,6 +134,7 @@ fn parse_term(chars: &mut Peekable<Chars>) -> Result<Expr, String> {
     }
     Ok(left)
 }
+
 fn parse_fanctor(chars: &mut Peekable<Chars>) -> Result<Expr, String> {
     // 数字や関数など要素単位parse処理
     let mut base = match chars.peek() {
@@ -121,10 +149,7 @@ fn parse_fanctor(chars: &mut Peekable<Chars>) -> Result<Expr, String> {
             }
         }
         // 関数の処理
-        Some(&c) if c.is_alphabetic() => match parse_function(chars) {
-            Ok(data) => data,
-            Err(e) => return Err(e),
-        },
+        Some(&c) if c.is_alphabetic() => parse_function(chars)?,
         // 数字のparse処理
         Some(&c) if c.is_ascii_digit() || c == '.' => {
             let mut number_str = "".to_string();
@@ -152,91 +177,146 @@ fn parse_fanctor(chars: &mut Peekable<Chars>) -> Result<Expr, String> {
     }
     Ok(base)
 }
-
 fn parse_function(chars: &mut Peekable<Chars>) -> Result<Expr, String> {
+    // 各種関数の処理
     let mut function_name = "".to_string();
+
     while let Some(&c) = chars.peek() {
         if c.is_alphabetic() {
-            function_name += c.to_lowercase().to_string().as_str();
+            function_name += &c.to_lowercase().to_string();
             chars.next();
-        } else if c == '(' {
+        } else if c == '(' || c == ' ' {
             chars.next();
             break;
         } else {
             return Err(format!("Expected parethesis after {}", function_name));
         }
     }
+
     match function_name.as_str() {
         "sqrt" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Sqrt(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after sqrt".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Sqrt(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "sin" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Sin(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after sin".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Sin(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "cos" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Cos(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after cos".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Cos(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "tan" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Tan(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after tan".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Tan(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "asin" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Asin(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after asin".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Asin(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "acos" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Acos(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after acos".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Acos(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "atan" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::Atan(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after atan".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Atan(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
+            }
+        }
+        "log" => {
+            let arg = parse_expression(chars)?;
+            match chars.next() {
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Log(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
+            }
+        }
+        "ln" => {
+            let arg = parse_expression(chars)?;
+            match chars.next() {
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::Ln(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "torad" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::ToRadian(Box::new(arg))),
-                _ => Err("Expected closing parenthesis after torad".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::ToRadian(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "todegree" => {
             let arg = parse_expression(chars)?;
             match chars.next() {
-                Some(')') => Ok(Expr::ToDegree(Box::new(arg))),
-                _ => Err("expected closing parenthesis after todegree".to_string()),
+                Some(')') => Ok(Expr::Func(Box::new(MathFunction::ToDegree(Box::new(arg))))),
+                _ => Err(format!(
+                    "Expected closing parenthesis after {}",
+                    function_name
+                )),
             }
         }
         "pi" => match chars.next() {
-            Some(')') => Ok(Expr::Pi),
-            _ => Err("Expected closing parenthesis after pi".to_string()),
+            Some(')') => Ok(Expr::Consts(Box::new(MathConst::Pi))),
+            _ => Err(format!(
+                "Expected closing parenthesis after {}",
+                function_name
+            )),
         },
         "e" => match chars.next() {
-            Some(')') => Ok(Expr::E),
-            _ => Err("Expected closing parenthesis after e".to_string()),
+            Some(')') => Ok(Expr::Consts(Box::new(MathConst::E))),
+            _ => Err(format!(
+                "Expected closing parenthesis after {}",
+                function_name
+            )),
         },
         _ => Err(format!("Unknown function: {}", function_name)),
     }
@@ -270,5 +350,8 @@ fn calctest() {
     assert_eq!(inner_parse("sqrt(4)+sqrt(9)"), 5.0);
     assert_eq!(inner_parse("sqrt(4)*sqrt(9)"), 6.0);
     assert_eq!(inner_parse("3^2+2^3"), 17.0);
+    assert_eq!(inner_parse("ln(e()^2)"), 2.0);
+    assert_eq!(inner_parse("log(1000)"), 3.0);
     assert_eq!(inner_parse("3^2/sqrt(9)"), 3.0);
+    assert!((inner_parse("(ln(1000)-ln(100))/ln(1.1)") - 24.158857).abs() < 0.0001);
 }
